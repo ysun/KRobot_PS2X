@@ -10,7 +10,6 @@
 #define PS2_CMD        11  //11
 #define PS2_SEL        10  //10
 #define PS2_CLK        13
-//12
 
 //#define DEBUG
 //#define Serial.print() //
@@ -30,14 +29,14 @@ PS2X ps2x; // create PS2 Controller Class
 //or call config_gamepad(pins) again after connecting the controller.
 
 int error = 0;
-byte type = 0;
 byte vibrate = 0;
+signed char pss_lx = 0;
+signed char pss_ly = 0;
+char need_stop = 0;
+char LED_state = 0;
 
-char left[] = {0xff, 0x55, 0x07, 0x00, 0x02, 0x05, 0x9c, 0xff, 0x64, 00};
-char right[] = {0xff, 0x55, 0x07, 0x00, 0x02, 0x05, 0x9c, 0xff, 0x9c, 0xff};
-
-char right_wheel_fw[] = {0xFF, 0x55, 0x9, 0, 0x2, 0xA, 9, 0x3F, 0xFF, 0, 0, 0, 0xA};
-char left_wheel_fw[] = {0xFF, 0x55, 0x9, 0, 0x2, 0xA, 10, 0xCF, 0x0, 0, 0, 0, 0xA};
+char right_wheel_fw[] = {0xFF, 0x55, 0x9, 0, 0x2, 0xA, 9, 0xeF, 0xFF, 0, 0, 0, 0xA};
+char left_wheel_fw[] = {0xFF, 0x55, 0x9, 0, 0x2, 0xA, 10, 0xeF, 0x0, 0, 0, 0, 0xA};
 
 char right_wheel_bw[] = {0xFF, 0x55, 0x9, 0, 0x2, 0xA, 9, 0xCF, 0x0, 0, 0, 0, 0xA};
 char left_wheel_bw[] = {0xFF, 0x55, 0x9, 0, 0x2, 0xA, 10, 0x3f, 0xFF, 0, 0, 0, 0xA};
@@ -46,7 +45,6 @@ char right_wheel_stop[] = {0xFF, 0x55, 0x9, 0, 0x2, 0xA, 9, 0x0, 0x0, 0, 0, 0, 0
 char left_wheel_stop[] = {0xFF, 0x55, 0x9, 0, 0x2, 0xA, 10, 0xFF, 0xFF, 0, 0, 0, 0xA};
 
 char stop[] = {0xff, 0x55, 0x07, 00, 0x02, 0x05, 0x00, 0x00, 0x00, 0x00};
-
 char LED[] = {0xFF, 0x55, 0x9, 0, 0x2, 0x8, 0x7, 0x2, 0, 0x20, 0x20, 0x20, 0xA};
 char BUZZER[] = {0xFF, 0x55, 0x9, 0, 0x2, 0x22, 0x26,0x1, 0xFA, 0,0,0, 0xA};
 
@@ -58,78 +56,154 @@ void setup(){
    
   //setup pins and settings: GamePad(clock, command, attention, data, Pressures?, Rumble?) check for error
   error = ps2x.config_gamepad(PS2_CLK, PS2_CMD, PS2_SEL, PS2_DAT, pressures, rumble);
-  
-//  type = ps2x.readType(); 
+}
+
+void setspeed_one_wheel (char cmd_wheel[], char speed) {
+	cmd_wheel[7] = speed;
+}
+void write_to_wheel (char cmd_wheel[]) {
+        for(int i=0; i < cmd_wheel[2]+4; i++) {
+            Serial.write(cmd_wheel[i]);
+        }
+}
+
+void set_led(char state) {
+	switch(state) {
+	case 0:
+		LED[9] = 60;
+		LED[10] = 0;
+		LED[11] = 0;
+		break;
+	case 1:
+		LED[9] = 0;
+		LED[10] = 60;
+		LED[11] = 0;
+		break;
+	case 2:
+		LED[9] = 0;
+		LED[10] = 0;
+		LED[11] = 60;
+		break;
+	}
+
+        for(int i=0; i<sizeof(LED); i++) {
+          Serial.write(LED[i]);
+        }   
+
+}
+
+void move (char speed, char direct = 1) {
+	need_stop = 1;
+	if (direct == 1) {
+		setspeed_one_wheel(left_wheel_fw, speed);
+		setspeed_one_wheel(right_wheel_fw, 255 - speed);
+
+		write_to_wheel(left_wheel_fw);
+		write_to_wheel(right_wheel_fw);
+	} else {
+		setspeed_one_wheel(left_wheel_bw, 255 - speed);
+		setspeed_one_wheel(right_wheel_bw, speed);
+
+		write_to_wheel(left_wheel_bw);
+		write_to_wheel(right_wheel_bw);
+	}
+}
+void moveXY (signed char speed_x, signed char speed_y) {
+	need_stop = 1;
+	unsigned char speed_l, speed_r = 0;
+	signed char direct = -speed_y / abs(speed_y);   //1: fw  -1: bw
+	signed int tmp = 0;
+	float stress;
+
+	if (speed_y > 127) speed_y = 127;
+	if (speed_y < -127) speed_y = -127;
+
+	stress = sqrt(speed_x * speed_x + speed_y * speed_y);
+	if (stress > 127) stress = 127;
+
+	speed_l = speed_r = (unsigned char) stress * 2;
+
+	if (speed_x > 0) {
+		tmp = speed_l;
+		tmp -= 2*speed_x;
+		speed_l = tmp < 0 ? 0 : (unsigned char)tmp;
+
+	} else {
+		tmp = speed_r;
+		tmp += 2*speed_x;
+
+		speed_r = tmp < 0 ? 0 : (unsigned char)tmp;
+	}
+
+	if(direct == 1) {
+		setspeed_one_wheel(left_wheel_fw, speed_l);
+		setspeed_one_wheel(right_wheel_fw, 255 - speed_r);
+
+		write_to_wheel(left_wheel_fw);
+		write_to_wheel(right_wheel_fw);
+	} else if ( direct == -1 ) {
+		setspeed_one_wheel(left_wheel_bw, 255 - speed_l);
+		setspeed_one_wheel(right_wheel_bw, speed_r);
+
+		write_to_wheel(left_wheel_bw);
+		write_to_wheel(right_wheel_bw);
+	}
 }
 
 void loop() {
-  /* You must Read Gamepad to get new values and set vibration values
-     ps2x.read_gamepad(small motor on/off, larger motor strenght from 0-255)
-     if you don't enable the rumble, use ps2x.read_gamepad(); with no values
-     You should call this at least once a second
-   */  
-//  if(error == 1) //skip loop if no controller found
-//    return; 
-
  //DualShock Controller
     ps2x.read_gamepad(false, vibrate); //read controller and set large motor to spin at 'vibrate' speed
 
     if(ps2x.Button(PSB_PAD_UP)) {      //will be TRUE as long as button is pressed
-      Serial.print("Up held this hard: ");
-      Serial.println(ps2x.Analog(PSAB_PAD_UP), DEC);
-        for(int i=0; i<sizeof(left_wheel_fw); i++) {
-            Serial.write(left_wheel_fw[i]);
-        }
-        for(int i=0; i<sizeof(left); i++) {
-            Serial.write(right_wheel_fw[i]);
-        }
+	move(200);
     }
     if(ps2x.Button(PSB_PAD_RIGHT)){
-      for(int i=0; i<sizeof(right_wheel_fw); i++) {
-        Serial.write(right_wheel_fw[i]);
-      }
-      for(int i=0; i<sizeof(left_wheel_stop); i++) {
-        Serial.write(left_wheel_stop[i]);
-      }
+	moveXY(80,-100);
     }
     if(ps2x.Button(PSB_PAD_LEFT)){
-      for(int i=0; i<sizeof(left_wheel_fw); i++) {
-        Serial.write(left_wheel_fw[i]);
-      }
-      for(int i=0; i<sizeof(right_wheel_stop); i++) {
-        Serial.write(right_wheel_stop[i]);
-      }
+	moveXY(-80,-100);
     }
     if(ps2x.Button(PSB_PAD_DOWN)){
-      for(int i=0; i<sizeof(left_wheel_fw); i++) {
-          Serial.write(left_wheel_bw[i]);
-      }
-      for(int i=0; i<sizeof(left); i++) {
-          Serial.write(right_wheel_bw[i]);
-      }
+	move(200, 0);
     }   
-//    vibrate = ps2x.Analog(PSAB_CROSS);  //this will set the large motor vibrate speed based on how hard you press the blue (X) button
     if(ps2x.ButtonPressed(PSB_CIRCLE)) {               //will be TRUE if button was JUST pressed
       Serial.println("Circle just pressed");
-        for(int i=0; i<sizeof(left); i++) {
+        for(int i=0; i<sizeof(stop); i++) {
           Serial.write(stop[i]);
         }
     }
 
     if(ps2x.ButtonPressed(PSB_CROSS)) {               //will be TRUE if button was JUST pressed
-//      Serial.println("Circle just pressed");
-        for(int i=0; i<sizeof(LED); i++) {
-          Serial.write(LED[i]);
-        }   
+	set_led(LED_state % 3);
+	LED_state++;
     }
-    if(ps2x.ButtonPressed(PSB_SQUARE)) {               //will be TRUE if button was JUST pressed
+
+    if(ps2x.ButtonPressed(PSB_TRIANGLE)) {
+        Serial.println("TRIANGLE just pressed");
         for(int i=0; i<sizeof(BUZZER); i++) {
           Serial.write(BUZZER[i]);
         }   
     }    
-  delay(50);
-  
-  for(int i=0; i<sizeof(left); i++) {
-     Serial.write(stop[i]);
-  }  
+
+    unsigned int tmp = ps2x.Analog(PSS_LX);
+    tmp = tmp == 0? -127 : tmp - 128;    //make sure tmp is [-127, 127]
+    pss_lx = (unsigned char)tmp; 
+
+    tmp = ps2x.Analog(PSS_LY);
+    tmp = tmp == 0? -127 : tmp - 128;    //make sure tmp is [-127, 127]
+    pss_ly = (unsigned char)tmp; 
+
+    if(abs(pss_lx) > 50 || abs(pss_ly) > 50) {
+      moveXY(pss_lx, pss_ly);
+    };
+
+    delay(50);
+
+    if(need_stop) {
+	need_stop = 0;
+
+        for(int i=0; i<sizeof(stop); i++) {
+           Serial.write(stop[i]);
+        }
+    }
 }
