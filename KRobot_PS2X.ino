@@ -35,6 +35,10 @@ signed char pss_ly = 0;
 char need_stop = 0;
 char LED_state = 0;
 
+/*
+   All the instruction format are template
+   We should change the key byte before we use it.
+*/
 char right_wheel_fw[] = {0xFF, 0x55, 0x9, 0, 0x2, 0xA, 9, 0xeF, 0xFF, 0, 0, 0, 0xA};
 char left_wheel_fw[] = {0xFF, 0x55, 0x9, 0, 0x2, 0xA, 10, 0xeF, 0x0, 0, 0, 0, 0xA};
 
@@ -58,9 +62,14 @@ void setup(){
   error = ps2x.config_gamepad(PS2_CLK, PS2_CMD, PS2_SEL, PS2_DAT, pressures, rumble);
 }
 
+// The 7th byte is speed of motor
 void setspeed_one_wheel (char cmd_wheel[], char speed) {
 	cmd_wheel[7] = speed;
 }
+
+// Notice, the second byte describe the len of the whole instruction.
+// The instruction should be cmd[2]+4, the extra 4 byte are:
+// 0xFF, 0x55, <length>, and the last byte 0xA
 void write_to_wheel (char cmd_wheel[]) {
         for(int i=0; i < cmd_wheel[2]+4; i++) {
             Serial.write(cmd_wheel[i]);
@@ -89,9 +98,10 @@ void set_led(char state) {
         for(int i=0; i<sizeof(LED); i++) {
           Serial.write(LED[i]);
         }   
-
 }
 
+/* direct=1 means forward.
+   Others means backward. */
 void move (char speed, char direct = 1) {
 	need_stop = 1;
 	if (direct == 1) {
@@ -108,6 +118,8 @@ void move (char speed, char direct = 1) {
 		write_to_wheel(right_wheel_bw);
 	}
 }
+
+/* The X and Y should be from game joystick, the axis X and asis Y. */
 void moveXY (signed char speed_x, signed char speed_y) {
 	need_stop = 1;
 	unsigned char speed_l, speed_r = 0;
