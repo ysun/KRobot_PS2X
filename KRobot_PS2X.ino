@@ -209,6 +209,20 @@ void loop() {
       moveXY(pss_lx, pss_ly);
     };
 
+
+// The right joystick is just the same as the left one.
+    tmp = ps2x.Analog(PSS_RX);
+    tmp = tmp == 0? -127 : tmp - 128;    //make sure tmp is [-127, 127]
+    pss_lx = (unsigned char)tmp; 
+
+    tmp = ps2x.Analog(PSS_RY);
+    tmp = tmp == 0? -127 : tmp - 128;    //make sure tmp is [-127, 127]
+    pss_ly = (unsigned char)tmp; 
+
+    if(abs(pss_lx) > 50 || abs(pss_ly) > 50) {
+      moveXY(pss_lx, pss_ly);
+    };
+
     delay(50);
 
     if(need_stop) {
