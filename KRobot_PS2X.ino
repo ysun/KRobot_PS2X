@@ -11,8 +11,7 @@
 #define PS2_SEL        10  //10
 #define PS2_CLK        13
 
-//#define DEBUG
-//#define Serial.print() //
+//#define Serial.print() 
 /******************************************************************
  * select modes of PS2 controller:
  *   - pressures = analog reading of push-butttons 
@@ -30,27 +29,11 @@ PS2X ps2x; // create PS2 Controller Class
 
 int error = 0;
 byte vibrate = 0;
-signed char pss_lx = 0;
-signed char pss_ly = 0;
-char need_stop = 0;
-char LED_state = 0;
+unsigned char need_send = 0;
+unsigned char is_pre_stop = 0;
 
-/*
-   All the instruction format are template
-   We should change the key byte before we use it.
-*/
-char right_wheel_fw[] = {0xFF, 0x55, 0x9, 0, 0x2, 0xA, 9, 0xeF, 0xFF, 0, 0, 0, 0xA};
-char left_wheel_fw[] = {0xFF, 0x55, 0x9, 0, 0x2, 0xA, 10, 0xeF, 0x0, 0, 0, 0, 0xA};
-
-char right_wheel_bw[] = {0xFF, 0x55, 0x9, 0, 0x2, 0xA, 9, 0xCF, 0x0, 0, 0, 0, 0xA};
-char left_wheel_bw[] = {0xFF, 0x55, 0x9, 0, 0x2, 0xA, 10, 0x3f, 0xFF, 0, 0, 0, 0xA};
-
-char right_wheel_stop[] = {0xFF, 0x55, 0x9, 0, 0x2, 0xA, 9, 0x0, 0x0, 0, 0, 0, 0xA};
-char left_wheel_stop[] = {0xFF, 0x55, 0x9, 0, 0x2, 0xA, 10, 0xFF, 0xFF, 0, 0, 0, 0xA};
-
-char stop[] = {0xff, 0x55, 0x07, 00, 0x02, 0x05, 0x00, 0x00, 0x00, 0x00};
-char LED[] = {0xFF, 0x55, 0x9, 0, 0x2, 0x8, 0x7, 0x2, 0, 0x20, 0x20, 0x20, 0xA};
-char BUZZER[] = {0xFF, 0x55, 0x9, 0, 0x2, 0x22, 0x26,0x1, 0xFA, 0,0,0, 0xA};
+unsigned char data[10] = {0};
+#define MAX_CMD_LEN 10
 
 void setup(){
  
@@ -67,169 +50,151 @@ void setspeed_one_wheel (char cmd_wheel[], char speed) {
 	cmd_wheel[7] = speed;
 }
 
-// Notice, the second byte describe the len of the whole instruction.
-// The instruction should be cmd[2]+4, the extra 4 byte are:
-// 0xFF, 0x55, <length>, and the last byte 0xA
-void write_to_wheel (char cmd_wheel[]) {
-        for(int i=0; i < cmd_wheel[2]+4; i++) {
-            Serial.write(cmd_wheel[i]);
-        }
+/*
+    ps2_data_list[MeJOYSTICK_LX] = buffer[2];
+    ps2_data_list[MeJOYSTICK_LY] = buffer[4];
+    ps2_data_list[MeJOYSTICK_RX] = buffer[6];
+    ps2_data_list[MeJOYSTICK_RY] = buffer[8];
+    ps2_data_list[MeJOYSTICK_R1] = (buffer[3] & 0x01) == 0x01 ? true : false;
+    ps2_data_list[MeJOYSTICK_R2] = (buffer[3] & 0x02) == 0x02 ? true : false;
+    ps2_data_list[MeJOYSTICK_L1] = (buffer[3] & 0x04) == 0x04 ? true : false; 
+    ps2_data_list[MeJOYSTICK_L2] = (buffer[3] & 0x08) == 0x08 ? true : false;
+    ps2_data_list[MeJOYSTICK_MODE] = (buffer[3] & 0x10) ==0x10 ? true : false;
+    ps2_data_list[MeJOYSTICK_TRIANGLE] = (buffer[5] & 0x01) == 0x01 ? true : false;
+    ps2_data_list[MeJOYSTICK_XSHAPED] = (buffer[5] & 0x02) == 0x02 ? true : false;
+    ps2_data_list[MeJOYSTICK_SQUARE] = (buffer[5] & 0x04) == 0x04 ? true : false;
+    ps2_data_list[MeJOYSTICK_ROUND] = (buffer[5] & 0x08) == 0x08 ? true : false;
+    ps2_data_list[MeJOYSTICK_START] = (buffer[5] & 0x10) == 0x10 ? true : false;
+    ps2_data_list[MeJOYSTICK_UP] = (buffer[7] & 0x01) == 0x01 ? true : false;
+    ps2_data_list[MeJOYSTICK_DOWN] = (buffer[7] & 0x02) == 0x02 ? true : false ;
+    ps2_data_list[MeJOYSTICK_LEFT] = (buffer[7] & 0x04) == 0x04 ? true : false ;
+    ps2_data_list[MeJOYSTICK_RIGHT] = (buffer[7] & 0x08) == 0x08 ? true : false ;
+    ps2_data_list[MeJOYSTICK_SELECT] = (buffer[7] & 0x10) == 0x10 ? true : false ;
+    ps2_data_list[MeJOYSTICK_BUTTON_L] = (buffer[3] & 0x20) == 0x20 ? true : false ;
+    ps2_data_list[MeJOYSTICK_BUTTON_R] = (buffer[7] & 0x20) == 0x20 ? true : false ;
+*/
+
+#define POS_DATA_PSS_LX 2
+#define POS_DATA_PSS_LY 4
+#define POS_DATA_PSS_RX 6
+#define POS_DATA_PSS_RY 8
+
+#define POS_DATA_PSB_L1 3
+#define POS_DATA_PSB_L2 3
+#define POS_DATA_PSB_R1 3
+#define POS_DATA_PSB_R2 3
+
+#define MASK_PSB_R1 0x01
+#define MASK_PSB_R2 0x02
+#define MASK_PSB_L1 0x04
+#define MASK_PSB_L2 0x08
+#define MASK_PSB_MODE 0x10
+
+#define POS_DATA_PSB_TRIANGLE 5
+#define POS_DATA_PSB_CROSS 5
+#define POS_DATA_PSB_SQUARE 5
+#define POS_DATA_PSB_CIRCLE 5
+#define POS_DATA_PSB_START 5
+
+#define MASK_PSB_TRIANGLE 0x01
+#define MASK_PSB_CROSS 0x02
+#define MASK_PSB_SQUARE 0x04
+#define MASK_PSB_CIRCLE 0x08
+#define MASK_PSB_START 0x10
+
+#define POS_DATA_PSB_PAD_UP 7
+#define POS_DATA_PSB_PAD_DOWN 7
+#define POS_DATA_PSB_PAD_LEFT 7
+#define POS_DATA_PSB_PAD_RIGHT 7
+#define POS_DATA_PSB_SELECT 7
+
+#define MASK_PSB_PAD_UP 0x01
+#define MASK_PSB_PAD_DOWN 0x02
+#define MASK_PSB_PAD_LEFT 0x04
+#define MASK_PSB_PAD_RIGHT 0x08
+#define MASK_PSB_SELECT 0x10
+
+#define LISTEN_EVENT(EVENT_NAME) \
+	if(ps2x.Button((EVENT_NAME))) \
+		data[POS_DATA_##EVENT_NAME] = data[POS_DATA_##EVENT_NAME] | MASK_##EVENT_NAME; 
+
+#define LISTEN_EVENT_ANALOG(EVENT_NAME) {\
+	unsigned char tmp = ps2x.Analog(EVENT_NAME); \
+	data[POS_DATA_##EVENT_NAME] = tmp;} 
+
+void pack_cmd(unsigned char cmd[]) {
+	cmd[0] = 0xff;
+	cmd[1] = 0x55;
+
+	cmd[9] = cmd[2]+cmd[3]+cmd[4]+cmd[5]+cmd[6]+cmd[7]+cmd[8];
 }
-
-void set_led(char state) {
-	switch(state) {
-	case 0:
-		LED[9] = 60;
-		LED[10] = 0;
-		LED[11] = 0;
-		break;
-	case 1:
-		LED[9] = 0;
-		LED[10] = 60;
-		LED[11] = 0;
-		break;
-	case 2:
-		LED[9] = 0;
-		LED[10] = 0;
-		LED[11] = 60;
-		break;
-	}
-
-        for(int i=0; i<sizeof(LED); i++) {
-          Serial.write(LED[i]);
-        }   
-}
-
-/* direct=1 means forward.
-   Others means backward. */
-void move (char speed, char direct = 1) {
-	need_stop = 1;
-	if (direct == 1) {
-		setspeed_one_wheel(left_wheel_fw, speed);
-		setspeed_one_wheel(right_wheel_fw, 255 - speed);
-
-		write_to_wheel(left_wheel_fw);
-		write_to_wheel(right_wheel_fw);
-	} else {
-		setspeed_one_wheel(left_wheel_bw, 255 - speed);
-		setspeed_one_wheel(right_wheel_bw, speed);
-
-		write_to_wheel(left_wheel_bw);
-		write_to_wheel(right_wheel_bw);
-	}
-}
-
-/* The X and Y should be from game joystick, the axis X and asis Y. */
-void moveXY (signed char speed_x, signed char speed_y) {
-	need_stop = 1;
-	unsigned char speed_l, speed_r = 0;
-	signed char direct = -speed_y / abs(speed_y);   //1: fw  -1: bw
-	signed int tmp = 0;
-	float stress;
-
-	if (speed_y > 127) speed_y = 127;
-	if (speed_y < -127) speed_y = -127;
-
-	stress = sqrt(speed_x * speed_x + speed_y * speed_y);
-	if (stress > 127) stress = 127;
-
-	speed_l = speed_r = (unsigned char) stress * 2;
-
-	if (speed_x > 0) {
-		tmp = speed_l;
-		tmp -= 2*speed_x;
-		speed_l = tmp < 0 ? 0 : (unsigned char)tmp;
-
-	} else {
-		tmp = speed_r;
-		tmp += 2*speed_x;
-
-		speed_r = tmp < 0 ? 0 : (unsigned char)tmp;
-	}
-
-	if(direct == 1) {
-		setspeed_one_wheel(left_wheel_fw, speed_l);
-		setspeed_one_wheel(right_wheel_fw, 255 - speed_r);
-
-		write_to_wheel(left_wheel_fw);
-		write_to_wheel(right_wheel_fw);
-	} else if ( direct == -1 ) {
-		setspeed_one_wheel(left_wheel_bw, 255 - speed_l);
-		setspeed_one_wheel(right_wheel_bw, speed_r);
-
-		write_to_wheel(left_wheel_bw);
-		write_to_wheel(right_wheel_bw);
+void send_cmd(unsigned char cmd[]) {
+	for(int i=0; i<10; i++) {
+		Serial.write(cmd[i]);
 	}
 }
 
-void loop() {
- //DualShock Controller
+void check_send(unsigned char cmd[]) {
+	if ( cmd[3] != 0 || cmd[5] != 0 || cmd[7] != 0 ||\
+		!(is_pre_stop == 1 && check_stop(cmd) == 1) )
+		need_send = 1;
+}
+
+unsigned char check_stop(unsigned char cmd[]) {
+	if(abs(cmd[2]-0x80) <= 2 &&\
+	   abs(cmd[4]-0x80) <= 2 &&\
+	   abs(cmd[6]-0x80) <= 2 &&\
+	   abs(cmd[8]-0x80) <= 2) {
+		return 1;
+	}
+	return 0;
+}
+
+void loop() { //DualShock Controller
     ps2x.read_gamepad(false, vibrate); //read controller and set large motor to spin at 'vibrate' speed
 
-    if(ps2x.Button(PSB_PAD_UP)) {      //will be TRUE as long as button is pressed
-	move(200);
+/*
+    Following is example for event listening
+    if(ps2x.Button(PSB_PAD_UP)) {
+      data[POS_DATA_PSB_UP] = data[POS_DATA_PSB_UP] | MASK_PSB_UP;
     }
-    if(ps2x.Button(PSB_PAD_RIGHT)){
-	moveXY(80,-100);
-    }
-    if(ps2x.Button(PSB_PAD_LEFT)){
-	moveXY(-80,-100);
-    }
-    if(ps2x.Button(PSB_PAD_DOWN)){
-	move(200, 0);
-    }   
-    if(ps2x.ButtonPressed(PSB_CIRCLE)) {               //will be TRUE if button was JUST pressed
-      Serial.println("Circle just pressed");
-        for(int i=0; i<sizeof(stop); i++) {
-          Serial.write(stop[i]);
-        }
-    }
-
-    if(ps2x.ButtonPressed(PSB_CROSS)) {               //will be TRUE if button was JUST pressed
-	set_led(LED_state % 3);
-	LED_state++;
-    }
-
-    if(ps2x.ButtonPressed(PSB_TRIANGLE)) {
-        Serial.println("TRIANGLE just pressed");
-        for(int i=0; i<sizeof(BUZZER); i++) {
-          Serial.write(BUZZER[i]);
-        }   
-    }    
 
     unsigned int tmp = ps2x.Analog(PSS_LX);
-    tmp = tmp == 0? -127 : tmp - 128;    //make sure tmp is [-127, 127]
-    pss_lx = (unsigned char)tmp; 
-
     tmp = ps2x.Analog(PSS_LY);
-    tmp = tmp == 0? -127 : tmp - 128;    //make sure tmp is [-127, 127]
-    pss_ly = (unsigned char)tmp; 
+*/
 
-    if(abs(pss_lx) > 50 || abs(pss_ly) > 50) {
-      moveXY(pss_lx, pss_ly);
-    };
+    LISTEN_EVENT_ANALOG(PSS_LX);
+    LISTEN_EVENT_ANALOG(PSS_LY);
+    LISTEN_EVENT_ANALOG(PSS_RX);
+    LISTEN_EVENT_ANALOG(PSS_RY);
 
+    LISTEN_EVENT(PSB_L1);
+    LISTEN_EVENT(PSB_L2);
+    LISTEN_EVENT(PSB_R1);
+    LISTEN_EVENT(PSB_R2);
 
-// The right joystick is just the same as the left one.
-    tmp = ps2x.Analog(PSS_RX);
-    tmp = tmp == 0? -127 : tmp - 128;    //make sure tmp is [-127, 127]
-    pss_lx = (unsigned char)tmp; 
+    LISTEN_EVENT(PSB_TRIANGLE);
+    LISTEN_EVENT(PSB_CROSS);
+    LISTEN_EVENT(PSB_SQUARE);
+    LISTEN_EVENT(PSB_CIRCLE);
+    LISTEN_EVENT(PSB_START);
 
-    tmp = ps2x.Analog(PSS_RY);
-    tmp = tmp == 0? -127 : tmp - 128;    //make sure tmp is [-127, 127]
-    pss_ly = (unsigned char)tmp; 
+    LISTEN_EVENT(PSB_PAD_UP);
+    LISTEN_EVENT(PSB_PAD_DOWN);
+    LISTEN_EVENT(PSB_PAD_LEFT);
+    LISTEN_EVENT(PSB_PAD_RIGHT);
+    LISTEN_EVENT(PSB_SELECT);
 
-    if(abs(pss_lx) > 50 || abs(pss_ly) > 50) {
-      moveXY(pss_lx, pss_ly);
-    };
+    check_send(data);
 
-    delay(50);
+    if(need_send) { 
+        pack_cmd(data);
+        send_cmd(data);
+	need_send = 0;
+	is_pre_stop = check_stop(data);
 
-    if(need_stop) {
-	need_stop = 0;
-
-        for(int i=0; i<sizeof(stop); i++) {
-           Serial.write(stop[i]);
-        }
+	for(int i = 0; i < MAX_CMD_LEN; i++)
+		data[i] = 0;
     }
+    delay(50);
 }
