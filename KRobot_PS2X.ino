@@ -187,7 +187,8 @@ void loop() { //DualShock Controller
 
     check_send(data);
 
-    if(need_send) { 
+    //if(need_send) { 
+    if(1) {		//always send empty instructions!
         pack_cmd(data);
         send_cmd(data);
 	need_send = 0;
